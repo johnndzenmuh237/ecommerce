@@ -58,15 +58,21 @@
     .live-status-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:999px;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;}
     .live-status-chip.playing{background:rgba(29,185,122,.15);color:#0a6e46;}
     .live-status-chip.paused{background:rgba(232,147,26,.15);color:#a05a00;}
+    .live-status-chip.cancelled{background:rgba(220,38,38,.14);color:#b91c1c;}
     .live-status-chip .dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
     .live-status-chip.playing .dot{animation:blink-dot 1.4s ease-in-out infinite;}
     @keyframes blink-dot{0%,100%{opacity:1;}50%{opacity:.3;}}
     .live-pbar{height:8px;background:var(--color-light-gray);border-radius:999px;overflow:hidden;margin:var(--space-3) 0;}
     .live-pfill{height:100%;background:linear-gradient(90deg,var(--color-accent),var(--color-sky));border-radius:999px;transition:width 1s linear;}
+    .live-pfill.cancelled-fill{background:linear-gradient(90deg,#b91c1c,#e05a5a);}
     .live-meta-row{display:flex;justify-content:space-between;font-size:var(--text-xs);color:var(--color-text-light);margin-bottom:var(--space-4);}
     .live-loc-line{font-size:var(--text-sm);font-weight:600;color:var(--color-navy);margin-bottom:var(--space-4);}
-    .live-buttons{display:flex;gap:var(--space-3);}
-    .live-buttons button{flex:1;}
+    .live-buttons{display:flex;gap:var(--space-3);flex-wrap:wrap;}
+    .live-buttons button, .live-buttons a{flex:1;min-width:140px;}
+
+    /* Admin shipment control panel */
+    #admin-panel .search-row{align-items:flex-end;}
+    #admin-not-found{background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.3);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);}
   </style>
 </head>
 <body>
@@ -342,6 +348,48 @@
 
       </div>
 
+      <!-- ===== ADMIN: MANAGE EXISTING SHIPMENT ===== -->
+      <div class="card" style="padding:var(--space-8);margin-top:var(--space-8);" id="admin-panel">
+        <div style="display:flex;align-items:center;gap:var(--space-3);margin-bottom:var(--space-2);">
+          <span style="font-size:1.3rem;">🛠️</span>
+          <h3 style="font-size:var(--text-lg);font-weight:800;margin:0;">Manage Existing Shipment</h3>
+        </div>
+        <p style="font-size:var(--text-sm);color:var(--color-text-light);margin-bottom:var(--space-6);">
+          Paste any tracking reference below to pause, resume, or cancel its movement. Changes apply instantly and are visible to anyone viewing that reference on the live tracking page.
+        </p>
+
+        <div class="search-row" style="margin-bottom:var(--space-5);">
+          <div class="form-group" style="flex:1;min-width:200px;margin-bottom:0;">
+            <label class="form-label" for="admin-ref-input" style="font-size:var(--text-xs);letter-spacing:.08em;">TRACKING REFERENCE</label>
+            <input type="text" id="admin-ref-input" class="form-control" placeholder="e.g. SC-2024-001847" autocomplete="off" style="font-family:var(--font-mono);letter-spacing:.06em;">
+          </div>
+          <button type="button" class="btn btn--primary" id="admin-load-btn" onclick="adminLoadShipment()" style="flex-shrink:0;margin-bottom:4px;white-space:nowrap;">Load Shipment</button>
+        </div>
+
+        <div id="admin-not-found" class="hidden" style="font-size:var(--text-sm);color:#b91c1c;margin-bottom:var(--space-5);"></div>
+
+        <div id="admin-control" class="live-control hidden" style="margin:0;max-width:none;">
+          <div class="live-control-head">
+            <div class="live-control-title" id="admin-ref-label">—</div>
+            <div class="live-status-chip playing" id="admin-status-chip"><div class="dot"></div><span id="admin-status-text">—</span></div>
+          </div>
+          <div class="live-pbar"><div class="live-pfill" id="admin-pfill" style="width:0%"></div></div>
+          <div class="live-meta-row">
+            <span id="admin-pct-label">0% complete</span>
+            <span id="admin-eta-label">—</span>
+          </div>
+          <div class="live-loc-line">📍 Currently near: <span id="admin-loc-text">Calculating…</span></div>
+          <div class="live-buttons">
+            <button type="button" class="btn btn--outline" id="admin-pause-btn" onclick="adminTogglePlayback()">⏸ Pause Movement</button>
+            <button type="button" class="btn btn--outline" id="admin-cancel-btn" onclick="adminCancelShipment()" style="border-color:#b91c1c;color:#b91c1c;">✕ Cancel Shipment</button>
+            <a href="#" class="btn btn--primary" id="admin-track-btn" target="_blank" rel="noopener">🗺️ View Live</a>
+          </div>
+          <p style="font-size:var(--text-xs);color:var(--color-gray);margin-top:var(--space-3);margin-bottom:0;">
+            Pausing freezes the shipment's position until it's resumed. Cancelling is permanent and will show as "Cancelled" wherever this reference is tracked.
+          </p>
+        </div>
+      </div>
+
       <!-- TRUST SIGNALS -->
       <div class="grid grid-3" style="margin-top:var(--space-8);">
         <div style="text-align:center;padding:var(--space-4);">
@@ -423,6 +471,14 @@
         showSuccessState(ref, data, null);
       });
     }, true); // capture phase to override quote-form.js
+
+    // Admin panel: allow pressing Enter in the reference field to load
+    const adminInput = document.getElementById('admin-ref-input');
+    if (adminInput) {
+      adminInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); adminLoadShipment(); }
+      });
+    }
   });
 
   function showSuccessState(ref, data, quote) {
@@ -531,6 +587,138 @@
       btn.textContent = '✓ Copied!';
       setTimeout(() => btn.textContent = '📋 Copy Reference', 2000);
     });
+  }
+
+  /* ============================================================
+     ADMIN PANEL — pause / resume / cancel ANY tracking reference
+     This is fully separate from the "just submitted" live control
+     above, so it works for a reference typed in at any time, in
+     any browser tab that has that shipment's localStorage record.
+  ============================================================ */
+  let adminRef = null;
+  let adminPollTimer = null;
+  let adminLocLastFetchAt = 0;
+  let adminLocCache = null;
+
+  function adminLoadShipment() {
+    const raw = document.getElementById('admin-ref-input').value.trim();
+    const notFoundEl = document.getElementById('admin-not-found');
+    const panel = document.getElementById('admin-control');
+
+    notFoundEl.classList.add('hidden');
+    panel.classList.add('hidden');
+    if (adminPollTimer) { clearInterval(adminPollTimer); adminPollTimer = null; }
+    adminRef = null;
+
+    if (!raw) return;
+    const ref = raw.toUpperCase();
+    const quote = window.QuoteTrackingBridge.loadQuote(ref);
+
+    if (!quote) {
+      notFoundEl.textContent = `No shipment found for "${ref}". Check the reference and try again.`;
+      notFoundEl.classList.remove('hidden');
+      return;
+    }
+    if (quote.service_type === 'warehouse') {
+      notFoundEl.textContent = `"${ref}" is a warehousing shipment and is always in storage — there's nothing to pause or cancel.`;
+      notFoundEl.classList.remove('hidden');
+      return;
+    }
+
+    adminRef = ref;
+    adminLocCache = null;
+    adminLocLastFetchAt = 0;
+    document.getElementById('admin-ref-label').textContent = ref;
+    document.getElementById('admin-track-btn').href = `tracking.html?id=${ref}`;
+    panel.classList.remove('hidden');
+
+    adminUpdatePanel();
+    adminPollTimer = setInterval(adminUpdatePanel, 1000);
+  }
+
+  function adminUpdatePanel() {
+    if (!adminRef) return;
+    const quote = window.QuoteTrackingBridge.loadQuote(adminRef);
+    if (!quote) { clearInterval(adminPollTimer); adminPollTimer = null; return; }
+
+    const progress = window.QuoteTrackingBridge.computeProgress(quote);
+    const pct = Math.round(progress * 100);
+    const status = quote.playback.status; // playing | paused | cancelled | stored
+
+    const pfill = document.getElementById('admin-pfill');
+    pfill.style.width = pct + '%';
+    pfill.classList.toggle('cancelled-fill', status === 'cancelled');
+    document.getElementById('admin-pct-label').textContent = pct + '% complete';
+
+    const chip = document.getElementById('admin-status-chip');
+    const statusText = document.getElementById('admin-status-text');
+    const pauseBtn = document.getElementById('admin-pause-btn');
+    const cancelBtn = document.getElementById('admin-cancel-btn');
+
+    if (status === 'cancelled') {
+      chip.className = 'live-status-chip cancelled';
+      statusText.textContent = 'Cancelled';
+      pauseBtn.style.display = 'none';
+      cancelBtn.style.display = 'none';
+    } else if (pct >= 100) {
+      chip.className = 'live-status-chip playing';
+      statusText.textContent = 'Delivered';
+      pauseBtn.style.display = 'none';
+      cancelBtn.style.display = 'none';
+    } else if (status === 'playing') {
+      chip.className = 'live-status-chip playing';
+      statusText.textContent = 'En Route';
+      pauseBtn.style.display = '';
+      pauseBtn.textContent = '⏸ Pause Movement';
+      cancelBtn.style.display = '';
+    } else {
+      chip.className = 'live-status-chip paused';
+      statusText.textContent = 'Paused';
+      pauseBtn.style.display = '';
+      pauseBtn.textContent = '▶ Resume Movement';
+      cancelBtn.style.display = '';
+    }
+
+    const eta = new Date(quote.submittedAt + quote.transitDurationMs);
+    document.getElementById('admin-eta-label').textContent = status === 'cancelled'
+      ? 'Cancelled'
+      : (pct >= 100 ? 'Delivered' : 'ETA ' + eta.toLocaleDateString('en-US', { day:'numeric', month:'short', year:'numeric' }));
+
+    if (status === 'cancelled') {
+      document.getElementById('admin-loc-text').textContent = 'Frozen at last known position';
+    } else {
+      const now = Date.now();
+      if (!adminLocCache || now - adminLocLastFetchAt > 15000) {
+        adminLocLastFetchAt = now;
+        const pos = window.QuoteTrackingBridge.getPositionAtProgress(quote.waypoints, progress);
+        window.QuoteTrackingBridge.reverseGeocode(pos[0], pos[1]).then((label) => {
+          if (label) {
+            adminLocCache = label;
+            document.getElementById('admin-loc-text').textContent = pct >= 100
+              ? `${quote.destination_city}, ${quote.destination_country}`
+              : label;
+          }
+        });
+      }
+    }
+
+    if (pct >= 100 || status === 'cancelled') { clearInterval(adminPollTimer); adminPollTimer = null; }
+  }
+
+  function adminTogglePlayback() {
+    if (!adminRef) return;
+    const quote = window.QuoteTrackingBridge.loadQuote(adminRef);
+    if (!quote) return;
+    const action = quote.playback.status === 'playing' ? 'pause' : 'play';
+    window.QuoteTrackingBridge.setPlayback(adminRef, action);
+    adminUpdatePanel();
+  }
+
+  function adminCancelShipment() {
+    if (!adminRef) return;
+    if (!confirm(`Cancel shipment ${adminRef}? This cannot be undone.`)) return;
+    window.QuoteTrackingBridge.setPlayback(adminRef, 'cancel');
+    adminUpdatePanel();
   }
   </script>
 </body>
