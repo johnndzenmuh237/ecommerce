@@ -111,17 +111,18 @@ function injectHeader() {
               </li>
             </ul>
 
-            <!-- Mobile-only CTA -->
+             <!-- Mobile-only CTA -->
             <div class="nav-mobile-cta" aria-hidden="true">
-              <a href="quote-request.html" class="btn btn--primary btn--full">Get a Quote</a>
+              <a href="contact.html" class="btn btn--primary btn--full">Book your shipment</a>
               <a href="tracking.html" class="btn btn--outline-white btn--full">Track Shipment</a>
             </div>
           </nav>
 
+
           <div class="header-cta">
             <button class="dark-mode-toggle" id="dark-toggle" aria-label="Toggle dark mode"></button>
             <a href="tracking.html" class="btn btn--outline-white btn--sm">Track</a>
-            <a href="quote-request.html" class="btn btn--primary btn--sm">Get Quote</a>
+            <a href="contact.html" class="btn btn--primary btn--sm">Talk</a>
           </div>
 
           <button class="nav-toggle" id="nav-toggle" aria-label="Toggle menu" aria-expanded="false">
