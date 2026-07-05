@@ -27,6 +27,7 @@
     }
     .live-dot { width:8px; height:8px; background:#22c55e; border-radius:50%; animation:blink-dot 1.4s ease-in-out infinite; }
     .map-live-badge.paused .live-dot { background:#e8931a; animation:none; }
+    .map-live-badge.cancelled .live-dot { background:#b91c1c; animation:none; }
     @keyframes blink-dot { 0%,100%{opacity:1;} 50%{opacity:.35;} }
     .map-eta-badge {
       position:absolute; bottom:16px; right:16px; z-index:800;
@@ -57,6 +58,7 @@
       animation:ship-float .9s ease-in-out infinite alternate;
     }
     .lm-ship.paused { animation:none; background:#8a8f98; box-shadow:0 2px 20px rgba(0,0,0,.35); }
+    .lm-ship.cancelled { animation:none; background:#b91c1c; box-shadow:0 2px 20px rgba(185,28,28,.45); }
     @keyframes ship-float { from{transform:translateY(0);} to{transform:translateY(-5px);} }
 
     /* ===== STATUS ===== */
@@ -70,13 +72,21 @@
     .status-pill.pending     { background:rgba(232,147,26,.15);  color:#a05a00; }
     .status-pill.delivered   { background:rgba(29,185,122,.15);  color:#0a6e46; }
     .status-pill.paused      { background:rgba(232,147,26,.18);  color:#a05a00; }
+    .status-pill.cancelled   { background:rgba(220,38,38,.14);   color:#b91c1c; }
     .status-pill.paused .dot { animation:none; }
+    .status-pill.cancelled .dot { animation:none; }
     .status-pill.in-transit .dot { animation:blink-dot 1.4s ease-in-out infinite; }
 
     .paused-banner {
       display:flex; align-items:center; gap:var(--space-3);
       background:rgba(232,147,26,.1); border:1px solid rgba(232,147,26,.35);
       color:#a05a00; border-radius:var(--radius-lg); padding:var(--space-4) var(--space-6);
+      font-size:var(--text-sm); font-weight:600; margin-bottom:var(--space-6);
+    }
+    .cancelled-banner {
+      display:flex; align-items:center; gap:var(--space-3);
+      background:rgba(220,38,38,.08); border:1px solid rgba(220,38,38,.35);
+      color:#b91c1c; border-radius:var(--radius-lg); padding:var(--space-4) var(--space-6);
       font-size:var(--text-sm); font-weight:600; margin-bottom:var(--space-6);
     }
 
@@ -430,7 +440,7 @@
   }
 
   /* ============================================================
-     RENDER — QUOTE-SUBMITTED SHIPMENT (real time + pause aware)
+     RENDER — QUOTE-SUBMITTED SHIPMENT (real time + pause/cancel aware)
   ============================================================ */
   const SERVICE_LABELS = { ocean:'Ocean Freight', air:'Air Freight', road:'Road Transport', warehouse:'Warehousing', 'supply-chain':'Supply Chain', multimodal:'Multimodal' };
   const SERVICE_EMOJI  = { ocean:'🚢', air:'✈️', road:'🚛', warehouse:'🏭', 'supply-chain':'🔗', multimodal:'🌐' };
@@ -440,6 +450,7 @@
 
     const progress = window.QuoteTrackingBridge.computeProgress(quote);
     const pct = Math.round(progress * 100);
+    const cancelled = quote.playback.status === 'cancelled';
     const paused = quote.playback.status === 'paused' && pct < 100;
     const svcLabel = SERVICE_LABELS[quote.service_type] || quote.service_type;
     const vehicleEmoji = SERVICE_EMOJI[quote.service_type] || '📦';
@@ -448,8 +459,8 @@
     const etaStr = eta.toLocaleDateString('en-US', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
     const dLeft = Math.max(0, Math.round((eta - new Date()) / 86400000));
 
-    const statusClass = pct >= 100 ? 'delivered' : (paused ? 'paused' : 'in-transit');
-    const statusLabel = pct >= 100 ? 'Delivered' : (paused ? 'Paused by Shipper' : 'In Transit');
+    const statusClass = cancelled ? 'cancelled' : (pct >= 100 ? 'delivered' : (paused ? 'paused' : 'in-transit'));
+    const statusLabel = cancelled ? 'Cancelled' : (pct >= 100 ? 'Delivered' : (paused ? 'Paused by Shipper' : 'In Transit'));
 
     const addons = ['customs','insurance','pickup','delivery'].filter(k => quote[k] === 'yes')
       .map(k => ({ customs:'Customs Clearance', insurance:'Cargo Insurance', pickup:'Origin Pickup', delivery:'Final Mile' }[k]));
@@ -462,14 +473,17 @@
     const initialLocLabel = pct >= 100 ? destLabel : (pct <= 0 ? originLabel : 'Locating current position…');
 
     document.getElementById('t-result').innerHTML =
-      (paused ? `<div class="paused-banner">⏸ &nbsp;This shipment has been paused by the shipper. It will resume moving as soon as they press play.</div>` : '') +
+      `<div id="status-banner">${cancelled
+          ? '<div class="cancelled-banner">✕ &nbsp;This shipment has been cancelled by the shipper.</div>'
+          : (paused ? '<div class="paused-banner">⏸ &nbsp;This shipment has been paused by the shipper. It will resume moving as soon as they press play.</div>' : '')
+        }</div>` +
       buildResultHTML({
         id: quote.ref, statusClass, statusLabel, vehicleEmoji, service: svcLabel, vessel: quote.vessel,
         originCode: (quote.origin_city || '—').slice(0,3).toUpperCase(), originCity: quote.origin_city || '—', originCountry: quote.origin_country || '—',
         destCode: (quote.destination_city || '—').slice(0,3).toUpperCase(), destCity: quote.destination_city || '—', destCountry: quote.destination_country || '—',
         pct, transitDays: quote.transitDays, eta: etaStr,
         daysLeft: pct >= 100 ? 'Delivered' : dLeft + ' days remaining',
-        currentLocation: initialLocLabel, paused, isDemo: false,
+        currentLocation: initialLocLabel, paused, cancelled, isDemo: false,
         submittedAt: new Date(quote.submittedAt).toLocaleDateString('en-US', { day:'numeric', month:'short', year:'numeric' }),
         detailCards: [
           { icon: '👤', title: 'Shipper & Contact', rows: [
@@ -493,7 +507,7 @@
           ]},
           { icon: vehicleEmoji, title: 'Transport & Status', rows: [
               ['Vessel / Unit', quote.vessel], ['Transit Time', quote.transitDays + ' days'],
-              ['Progress', pct + '% complete'], ['Live Status', paused ? 'Paused by Shipper' : (pct>=100?'Delivered':'Moving')],
+              ['Progress', pct + '% complete'], ['Live Status', cancelled ? 'Cancelled' : (paused ? 'Paused by Shipper' : (pct>=100?'Delivered':'Moving'))],
               ['Submitted', new Date(quote.submittedAt).toLocaleDateString('en-US',{day:'numeric',month:'short',year:'numeric'})],
               ...(quote.special_instructions ? [['Notes', quote.special_instructions]] : []),
           ]},
@@ -502,7 +516,7 @@
       });
 
     setTimeout(() => {
-      initQuoteMap(quote.originCoords, quote.destCoords, quote.waypoints, currentPos, progress, vehicleEmoji, paused);
+      initQuoteMap(quote.originCoords, quote.destCoords, quote.waypoints, currentPos, progress, vehicleEmoji, paused, cancelled);
       startQuotePolling(quote.ref);
     }, 80);
   }
@@ -544,6 +558,7 @@
     if (!quote) { clearInterval(trackPollTimer); trackPollTimer = null; return; }
     const progress = window.QuoteTrackingBridge.computeProgress(quote);
     const pct = Math.round(progress * 100);
+    const cancelled = quote.playback.status === 'cancelled';
     const paused = quote.playback.status === 'paused' && pct < 100;
     const pos = window.QuoteTrackingBridge.getPositionAtProgress(quote.waypoints, progress);
 
@@ -559,25 +574,35 @@
     // Status pill
     const pill = document.querySelector('.status-pill');
     if (pill) {
-      pill.className = 'status-pill ' + (pct >= 100 ? 'delivered' : (paused ? 'paused' : 'in-transit'));
-      pill.innerHTML = '<div class="dot"></div>' + (pct >= 100 ? 'Delivered' : (paused ? 'Paused by Shipper' : 'In Transit'));
+      pill.className = 'status-pill ' + (cancelled ? 'cancelled' : (pct >= 100 ? 'delivered' : (paused ? 'paused' : 'in-transit')));
+      pill.innerHTML = '<div class="dot"></div>' + (cancelled ? 'Cancelled' : (pct >= 100 ? 'Delivered' : (paused ? 'Paused by Shipper' : 'In Transit')));
+    }
+
+    // Status banner (paused / cancelled) — kept in sync live, even if an admin
+    // pauses or cancels the shipment while this page is already open
+    const banner = document.getElementById('status-banner');
+    if (banner) {
+      banner.innerHTML = cancelled
+        ? '<div class="cancelled-banner">✕ &nbsp;This shipment has been cancelled by the shipper.</div>'
+        : (paused ? '<div class="paused-banner">⏸ &nbsp;This shipment has been paused by the shipper. It will resume moving as soon as they press play.</div>' : '');
     }
 
     // Live badge + ship marker style
     const liveBadge = document.querySelector('.map-live-badge');
     if (liveBadge) {
-      liveBadge.classList.toggle('paused', paused);
-      liveBadge.innerHTML = `<div class="live-dot"></div>${paused ? 'PAUSED' : (pct>=100 ? 'DELIVERED' : 'LIVE POSITION')}`;
+      liveBadge.classList.toggle('paused', paused && !cancelled);
+      liveBadge.classList.toggle('cancelled', cancelled);
+      liveBadge.innerHTML = `<div class="live-dot"></div>${cancelled ? 'CANCELLED' : (paused ? 'PAUSED' : (pct>=100 ? 'DELIVERED' : 'LIVE POSITION'))}`;
     }
     if (shipMark) {
       const el = shipMark.getElement();
-      if (el) { const div = el.querySelector('.lm-ship'); if (div) div.classList.toggle('paused', paused); }
+      if (el) { const div = el.querySelector('.lm-ship'); if (div) { div.classList.toggle('paused', paused && !cancelled); div.classList.toggle('cancelled', cancelled); } }
       shipMark.setLatLng(pos);
     }
 
-    // Pos badge (reverse-geocoded, throttled)
+    // Pos badge (reverse-geocoded, throttled) — frozen once cancelled
     const now = Date.now();
-    if (now - liveLocLastFetchAt > 15000 || !liveLocLabel) {
+    if (!cancelled && (now - liveLocLastFetchAt > 15000 || !liveLocLabel)) {
       liveLocLastFetchAt = now;
       window.QuoteTrackingBridge.reverseGeocode(pos[0], pos[1]).then((label) => {
         if (label) {
@@ -603,7 +628,7 @@
         </div>`).join('');
     }
 
-    if (pct >= 100) { clearInterval(trackPollTimer); trackPollTimer = null; }
+    if (pct >= 100 || cancelled) { clearInterval(trackPollTimer); trackPollTimer = null; }
   }
 
   /* ============================================================
@@ -647,7 +672,7 @@
 
       <div class="map-wrapper">
         <div id="live-map"></div>
-        <div class="map-live-badge ${o.paused ? 'paused' : ''}"><div class="live-dot"></div>${o.paused ? 'PAUSED' : (pct>=100?'DELIVERED':'LIVE POSITION')}</div>
+        <div class="map-live-badge ${o.cancelled ? 'cancelled' : (o.paused ? 'paused' : '')}"><div class="live-dot"></div>${o.cancelled ? 'CANCELLED' : (o.paused ? 'PAUSED' : (pct>=100?'DELIVERED':'LIVE POSITION'))}</div>
         <div class="map-pos-badge" id="pos-badge">📍 ${o.currentLocation}</div>
         <div class="map-eta-badge">
           <small>Est. Arrival</small>
@@ -769,7 +794,7 @@
     shipMark.bindPopup(`<strong>Current Position</strong><br>Lat ${currentPos[0].toFixed(2)}° Lng ${currentPos[1].toFixed(2)}°`).openPopup();
   }
 
-  function initQuoteMap(orig, dest, waypoints, currentPos, progress, emoji, paused) {
+  function initQuoteMap(orig, dest, waypoints, currentPos, progress, emoji, paused, cancelled) {
     orig = orig || [20, 80]; dest = dest || [20, 20];
     currentPos = currentPos || orig;
     waypoints = (waypoints && waypoints.length >= 2) ? waypoints : [orig, dest];
@@ -777,8 +802,9 @@
     const map = baseMapSetup(orig, dest, waypoints, currentPos, progress);
     if (!map) return;
 
+    const shipClass = cancelled ? ' cancelled' : (paused ? ' paused' : '');
     shipMark = L.marker(currentPos, {
-      icon: L.divIcon({ html:`<div class="lm-ship${paused?' paused':''}">${emoji}</div>`, className:'', iconSize:[46,46], iconAnchor:[23,23] }),
+      icon: L.divIcon({ html:`<div class="lm-ship${shipClass}">${emoji}</div>`, className:'', iconSize:[46,46], iconAnchor:[23,23] }),
       zIndexOffset: 1000,
     }).addTo(map);
     shipMark.bindPopup(`<strong>Current Position</strong><br>Lat ${currentPos[0].toFixed(2)}° Lng ${currentPos[1].toFixed(2)}°`);
