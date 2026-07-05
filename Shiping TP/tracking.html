@@ -26,6 +26,7 @@
       display:flex; align-items:center; gap:8px; border:1px solid rgba(255,255,255,.12);
     }
     .live-dot { width:8px; height:8px; background:#22c55e; border-radius:50%; animation:blink-dot 1.4s ease-in-out infinite; }
+    .map-live-badge.paused .live-dot { background:#e8931a; animation:none; }
     @keyframes blink-dot { 0%,100%{opacity:1;} 50%{opacity:.35;} }
     .map-eta-badge {
       position:absolute; bottom:16px; right:16px; z-index:800;
@@ -40,6 +41,7 @@
       background:rgba(10,22,40,.88); backdrop-filter:blur(8px);
       color:#fff; border-radius:var(--radius-md); padding:8px 14px;
       font-size:.75rem; font-family:var(--font-mono); border:1px solid rgba(255,255,255,.1);
+      max-width:60%;
     }
 
     /* ===== CUSTOM LEAFLET MARKERS ===== */
@@ -54,6 +56,7 @@
       box-shadow:0 2px 20px rgba(232,147,26,.65);
       animation:ship-float .9s ease-in-out infinite alternate;
     }
+    .lm-ship.paused { animation:none; background:#8a8f98; box-shadow:0 2px 20px rgba(0,0,0,.35); }
     @keyframes ship-float { from{transform:translateY(0);} to{transform:translateY(-5px);} }
 
     /* ===== STATUS ===== */
@@ -66,6 +69,16 @@
     .status-pill.in-transit  { background:rgba(74,159,212,.15); color:#0a6fa0; }
     .status-pill.pending     { background:rgba(232,147,26,.15);  color:#a05a00; }
     .status-pill.delivered   { background:rgba(29,185,122,.15);  color:#0a6e46; }
+    .status-pill.paused      { background:rgba(232,147,26,.18);  color:#a05a00; }
+    .status-pill.paused .dot { animation:none; }
+    .status-pill.in-transit .dot { animation:blink-dot 1.4s ease-in-out infinite; }
+
+    .paused-banner {
+      display:flex; align-items:center; gap:var(--space-3);
+      background:rgba(232,147,26,.1); border:1px solid rgba(232,147,26,.35);
+      color:#a05a00; border-radius:var(--radius-lg); padding:var(--space-4) var(--space-6);
+      font-size:var(--text-sm); font-weight:600; margin-bottom:var(--space-6);
+    }
 
     /* ===== ROUTE BAR ===== */
     .route-bar {
@@ -80,9 +93,9 @@
     .rc-sub  { font-size:var(--text-xs); color:var(--color-text-light); }
     .route-mid { flex:1; margin:0 var(--space-6); }
     .route-track { height:4px; background:var(--color-light-gray); border-radius:2px; position:relative; }
-    .route-done  { height:4px; background:linear-gradient(90deg,var(--color-accent),var(--color-sky)); border-radius:2px; position:absolute; top:0; left:0; transition:width 1.2s ease; }
-    .route-icon  { position:absolute; top:50%; transform:translate(-50%,-50%); font-size:1.5rem; transition:left 1.2s ease; filter:drop-shadow(0 1px 4px rgba(0,0,0,.3)); }
-    .route-pct   { position:absolute; top:50%; transform:translate(-50%,8px); background:var(--color-accent); color:#fff; font-size:.6rem; font-weight:800; padding:1px 6px; border-radius:6px; white-space:nowrap; }
+    .route-done  { height:4px; background:linear-gradient(90deg,var(--color-accent),var(--color-sky)); border-radius:2px; position:absolute; top:0; left:0; transition:width 1s linear; }
+    .route-icon  { position:absolute; top:50%; transform:translate(-50%,-50%); font-size:1.5rem; transition:left 1s linear; filter:drop-shadow(0 1px 4px rgba(0,0,0,.3)); }
+    .route-pct   { position:absolute; top:50%; transform:translate(-50%,8px); background:var(--color-accent); color:#fff; font-size:.6rem; font-weight:800; padding:1px 6px; border-radius:6px; white-space:nowrap; transition:left 1s linear; }
     .route-meta  { text-align:center; font-size:var(--text-xs); color:var(--color-text-light); margin-top:var(--space-3); }
 
     /* ===== DETAIL GRID ===== */
@@ -114,10 +127,6 @@
     .tl-event { font-size:var(--text-sm); font-weight:700; color:var(--color-navy); }
     .tl-event.active-ev { color:var(--color-accent); }
     .tl-loc   { font-size:.75rem; color:var(--color-text-light); margin-top:2px; }
-
-    /* ===== PROGRESS BAR ===== */
-    .pbar { height:7px; background:var(--color-light-gray); border-radius:999px; overflow:hidden; margin-top:4px; }
-    .pfill { height:100%; background:linear-gradient(90deg,var(--color-accent),var(--color-sky)); border-radius:999px; transition:width 1.2s ease; }
 
     /* ===== SEARCH BAR ===== */
     .search-bar {
@@ -198,7 +207,7 @@
         <div class="card" style="padding:var(--space-6);">
           <div style="font-size:2rem;margin-bottom:var(--space-3);">🗺️</div>
           <h4 style="margin-bottom:var(--space-2);">Live Map Position</h4>
-          <p style="font-size:var(--text-sm);color:var(--color-text-light);">See your shipment moving along its exact route on a real interactive map, with animated position updates.</p>
+          <p style="font-size:var(--text-sm);color:var(--color-text-light);">See your shipment moving along its actual route on a real interactive map, with a position that advances in real time and shows the town or city it's currently near.</p>
         </div>
         <div class="card" style="padding:var(--space-6);">
           <div style="font-size:2rem;margin-bottom:var(--space-3);">📋</div>
@@ -225,10 +234,9 @@
   <script>
   /* ============================================================
      SWIFTCARGO — UNIFIED TRACKING ENGINE
-     All logic is self-contained here. No dependency on tracking.js.
   ============================================================ */
 
-  /* ---- Built-in demo shipments ---- */
+  /* ---- Built-in demo shipments (illustrative, fixed snapshot + gentle drift) ---- */
   const DEMO = {
     'SC-2024-001847': {
       id: 'SC-2024-001847',
@@ -308,13 +316,16 @@
     },
   };
 
-  /* ---- Map state ---- */
-  let leafMap    = null;
-  let shipMark   = null;
-  let animId     = null;
-  let animProg   = 0;
-  let animWay    = [];
-  let lastTick   = null;
+  /* ---- Map + polling state ---- */
+  let leafMap      = null;
+  let shipMark     = null;
+  let animId       = null;   // demo drift animation
+  let animProg     = 0;
+  let animWay      = [];
+  let lastTick     = null;
+  let trackPollTimer = null; // real-time poll for user-submitted quotes
+  let liveLocLastFetchAt = 0;
+  let liveLocLabel = null;
 
   /* ---- URL auto-load ---- */
   document.addEventListener('DOMContentLoaded', () => {
@@ -334,12 +345,21 @@
     doTrack();
   }
 
+  /* ---- Stop any running loops before rendering a new result ---- */
+  function stopAllLoops() {
+    if (animId) { cancelAnimationFrame(animId); animId = null; }
+    if (trackPollTimer) { clearInterval(trackPollTimer); trackPollTimer = null; }
+    liveLocLastFetchAt = 0;
+    liveLocLabel = null;
+  }
+
   /* ---- Main track function ---- */
   function doTrack() {
     const raw = document.getElementById('t-input').value.trim();
     if (!raw) { showMsg('Please enter a tracking number.'); return; }
     const id  = raw.toUpperCase();
 
+    stopAllLoops();
     setBtnLoading(true);
     document.getElementById('t-info').style.display = 'none';
     showSpinner();
@@ -347,11 +367,9 @@
     setTimeout(() => {
       setBtnLoading(false);
 
-      /* Priority 1 — user-submitted quote in localStorage */
-      if (window.QuoteTrackingBridge) {
-        const quote = window.QuoteTrackingBridge.loadQuote(id);
-        if (quote) { renderQuote(quote); return; }
-      }
+      /* Priority 1 — user-submitted quote in localStorage (real-time engine) */
+      const quote = window.QuoteTrackingBridge ? window.QuoteTrackingBridge.loadQuote(id) : null;
+      if (quote) { renderQuoteLive(quote); return; }
 
       /* Priority 2 — built-in demo data */
       const demo = DEMO[id];
@@ -379,170 +397,213 @@
   }
 
   /* ============================================================
-     RENDER — DEMO SHIPMENTS
+     RENDER — DEMO SHIPMENTS (fixed snapshot, gentle visual drift)
   ============================================================ */
   function renderDemo(s) {
     const pct = Math.round(s.progress * 100);
 
     document.getElementById('t-result').innerHTML = buildResultHTML({
-      id:           s.id,
-      statusClass:  s.statusClass,
-      statusLabel:  s.statusLabel,
-      vehicleEmoji: s.vehicleEmoji,
-      service:      s.service,
-      vessel:       s.vessel,
-      originCode:   s.originCode,   originCity: s.originCity,   originCountry: s.originCountry,
-      destCode:     s.destCode,     destCity:   s.destCity,     destCountry:   s.destCountry,
-      pct,
-      transitDays:  s.transitDays,
-      eta:          s.eta,
-      daysLeft:     s.daysLeft,
-      currentLocation: s.currentLocation,
+      id: s.id, statusClass: s.statusClass, statusLabel: s.statusLabel,
+      vehicleEmoji: s.vehicleEmoji, service: s.service, vessel: s.vessel,
+      originCode: s.originCode, originCity: s.originCity, originCountry: s.originCountry,
+      destCode: s.destCode, destCity: s.destCity, destCountry: s.destCountry,
+      pct, transitDays: s.transitDays, eta: s.eta, daysLeft: s.daysLeft,
+      currentLocation: s.currentLocation, paused: false, isDemo: true,
       detailCards: [
-        {
-          icon: '📦', title: 'Shipment Info',
-          rows: [
-            ['Shipper',     s.shipper],
-            ['Consignee',   s.consignee],
-            ['Description', s.description],
-            ['Weight',      s.weight],
-            ['Volume',      s.volume],
-            ['Packages',    s.packages],
-            ['Incoterms',   s.incoterms],
-          ]
-        },
-        {
-          icon: '🗺️', title: 'Route & Transport',
-          rows: [
-            ['Service',     s.service],
-            ['Vessel',      s.vessel],
-            ['Origin',      s.origin],
-            ['Destination', s.dest],
-            ['Transit',     s.transitDays + ' days'],
-            ['Est. Delivery', s.eta],
-            ['Progress',    pct + '% complete'],
-          ]
-        },
+        { icon: '📦', title: 'Shipment Info', rows: [
+            ['Shipper', s.shipper], ['Consignee', s.consignee], ['Description', s.description],
+            ['Weight', s.weight], ['Volume', s.volume], ['Packages', s.packages], ['Incoterms', s.incoterms],
+        ]},
+        { icon: '🗺️', title: 'Route & Transport', rows: [
+            ['Service', s.service], ['Vessel', s.vessel], ['Origin', s.origin], ['Destination', s.dest],
+            ['Transit', s.transitDays + ' days'], ['Est. Delivery', s.eta], ['Progress', pct + '% complete'],
+        ]},
       ],
       events: s.events,
     });
 
-    setTimeout(() => initMap(s.originCoords, s.destCoords, s.waypoints, s.currentCoords, s.progress, s.vehicleEmoji), 80);
+    setTimeout(() => {
+      initMap(s.originCoords, s.destCoords, s.waypoints, s.currentCoords, s.progress, s.vehicleEmoji);
+      animProg = s.progress; animWay = s.waypoints; lastTick = null;
+      startDemoAnim();
+    }, 80);
   }
 
   /* ============================================================
-     RENDER — QUOTE-SUBMITTED SHIPMENT
+     RENDER — QUOTE-SUBMITTED SHIPMENT (real time + pause aware)
   ============================================================ */
-  function renderQuote(q) {
-    const sim  = q.simulation;
-    const pct  = Math.round(sim.progress * 100);
+  const SERVICE_LABELS = { ocean:'Ocean Freight', air:'Air Freight', road:'Road Transport', warehouse:'Warehousing', 'supply-chain':'Supply Chain', multimodal:'Multimodal' };
+  const SERVICE_EMOJI  = { ocean:'🚢', air:'✈️', road:'🚛', warehouse:'🏭', 'supply-chain':'🔗', multimodal:'🌐' };
 
-    const svcLabel = {
-      ocean:'Ocean Freight', air:'Air Freight', road:'Road Transport',
-      warehouse:'Warehousing', 'supply-chain':'Supply Chain', multimodal:'Multimodal'
-    }[sim.service] || (sim.service || 'Freight');
+  function renderQuoteLive(quote) {
+    if (quote.service_type === 'warehouse') { renderWarehouseQuote(quote); return; }
 
-    const vehicleEmoji = {
-      ocean:'🚢', air:'✈️', road:'🚛', warehouse:'🏭', 'supply-chain':'🔗', multimodal:'🌐'
-    }[sim.service] || '📦';
+    const progress = window.QuoteTrackingBridge.computeProgress(quote);
+    const pct = Math.round(progress * 100);
+    const paused = quote.playback.status === 'paused' && pct < 100;
+    const svcLabel = SERVICE_LABELS[quote.service_type] || quote.service_type;
+    const vehicleEmoji = SERVICE_EMOJI[quote.service_type] || '📦';
 
-    const eta     = new Date(sim.eta);
-    const etaStr  = eta.toLocaleDateString('en-US',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
-    const dLeft   = Math.max(0, Math.round((eta - new Date()) / 86400000));
+    const eta = new Date(quote.submittedAt + quote.transitDurationMs);
+    const etaStr = eta.toLocaleDateString('en-US', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
+    const dLeft = Math.max(0, Math.round((eta - new Date()) / 86400000));
 
-    const activeEv = sim.events.find(e => e.status === 'active');
-    const curLoc   = activeEv ? activeEv.location : sim.origin;
+    const statusClass = pct >= 100 ? 'delivered' : (paused ? 'paused' : 'in-transit');
+    const statusLabel = pct >= 100 ? 'Delivered' : (paused ? 'Paused by Shipper' : 'In Transit');
 
-    const statusClass = pct >= 100 ? 'delivered' : (pct > 0 ? 'in-transit' : 'pending');
-    const statusLabel = pct >= 100 ? 'Delivered' : (pct > 0 ? 'In Transit' : 'Booking Confirmed');
+    const addons = ['customs','insurance','pickup','delivery'].filter(k => quote[k] === 'yes')
+      .map(k => ({ customs:'Customs Clearance', insurance:'Cargo Insurance', pickup:'Origin Pickup', delivery:'Final Mile' }[k]));
+    const special = ['hazmat','refrigerated','fragile','oversized','high-value','perishable'].filter(k => quote[k] === 'yes')
+      .map(k => ({ hazmat:'Hazardous', refrigerated:'Refrigerated', fragile:'Fragile', oversized:'Oversized', 'high-value':'High Value', perishable:'Perishable' }[k]));
 
-    // Addons
-    const addons = ['customs','insurance','pickup','delivery'].filter(k => q[k]==='yes')
-      .map(k=>({customs:'Customs Clearance',insurance:'Cargo Insurance',pickup:'Origin Pickup',delivery:'Final Mile'}[k]));
-    const special = ['hazmat','refrigerated','fragile','oversized','high-value','perishable'].filter(k=>q[k]==='yes')
-      .map(k=>({hazmat:'Hazardous',refrigerated:'Refrigerated',fragile:'Fragile',oversized:'Oversized','high-value':'High Value',perishable:'Perishable'}[k]));
+    const originLabel = `${quote.origin_city || '—'}, ${quote.origin_country || '—'}`;
+    const destLabel = `${quote.destination_city || '—'}, ${quote.destination_country || '—'}`;
+    const currentPos = window.QuoteTrackingBridge.getPositionAtProgress(quote.waypoints, progress);
+    const initialLocLabel = pct >= 100 ? destLabel : (pct <= 0 ? originLabel : 'Locating current position…');
 
+    document.getElementById('t-result').innerHTML =
+      (paused ? `<div class="paused-banner">⏸ &nbsp;This shipment has been paused by the shipper. It will resume moving as soon as they press play.</div>` : '') +
+      buildResultHTML({
+        id: quote.ref, statusClass, statusLabel, vehicleEmoji, service: svcLabel, vessel: quote.vessel,
+        originCode: (quote.origin_city || '—').slice(0,3).toUpperCase(), originCity: quote.origin_city || '—', originCountry: quote.origin_country || '—',
+        destCode: (quote.destination_city || '—').slice(0,3).toUpperCase(), destCity: quote.destination_city || '—', destCountry: quote.destination_country || '—',
+        pct, transitDays: quote.transitDays, eta: etaStr,
+        daysLeft: pct >= 100 ? 'Delivered' : dLeft + ' days remaining',
+        currentLocation: initialLocLabel, paused, isDemo: false,
+        submittedAt: new Date(quote.submittedAt).toLocaleDateString('en-US', { day:'numeric', month:'short', year:'numeric' }),
+        detailCards: [
+          { icon: '👤', title: 'Shipper & Contact', rows: [
+              ['Name', `${quote.first_name || ''} ${quote.last_name || ''}`], ['Company', quote.company || '—'],
+              ['Email', quote.email || '—'], ['Phone', quote.phone || '—'], ['Country', quote.country || '—'],
+          ]},
+          { icon: '📦', title: 'Cargo', rows: [
+              ['Description', quote.cargo_description || '—'],
+              ['Weight', quote.cargo_weight ? quote.cargo_weight + ' kg' : '—'],
+              ['Volume', quote.cargo_volume ? quote.cargo_volume + ' CBM' : '—'],
+              ['Packages', quote.cargo_packages || '—'], ['Packaging', quote.packaging_type || '—'],
+              ...(special.length ? [['Special', special.join(', ')]] : []),
+          ]},
+          { icon: '🗺️', title: 'Route & Logistics', rows: [
+              ['Service', svcLabel], ['Origin', originLabel], ['Destination', destLabel],
+              ['Distance', quote.distanceKm ? quote.distanceKm.toLocaleString() + ' km' : '—'],
+              ['Incoterms', quote.incoterms || 'Flexible'],
+              ['Ready Date', quote.ready_date ? new Date(quote.ready_date).toLocaleDateString('en-US',{day:'numeric',month:'short',year:'numeric'}) : '—'],
+              ['Est. Delivery', etaStr],
+              ...(addons.length ? [['Add-ons', addons.join(', ')]] : []),
+          ]},
+          { icon: vehicleEmoji, title: 'Transport & Status', rows: [
+              ['Vessel / Unit', quote.vessel], ['Transit Time', quote.transitDays + ' days'],
+              ['Progress', pct + '% complete'], ['Live Status', paused ? 'Paused by Shipper' : (pct>=100?'Delivered':'Moving')],
+              ['Submitted', new Date(quote.submittedAt).toLocaleDateString('en-US',{day:'numeric',month:'short',year:'numeric'})],
+              ...(quote.special_instructions ? [['Notes', quote.special_instructions]] : []),
+          ]},
+        ],
+        events: window.QuoteTrackingBridge.buildEvents(quote, progress, pct > 0 && pct < 100 ? liveLocLabel : null),
+      });
+
+    setTimeout(() => {
+      initQuoteMap(quote.originCoords, quote.destCoords, quote.waypoints, currentPos, progress, vehicleEmoji, paused);
+      startQuotePolling(quote.ref);
+    }, 80);
+  }
+
+  function renderWarehouseQuote(quote) {
+    const originLabel = `${quote.origin_city || '—'}, ${quote.origin_country || '—'}`;
     document.getElementById('t-result').innerHTML = buildResultHTML({
-      id:           q.ref,
-      statusClass,  statusLabel,
-      vehicleEmoji, service: svcLabel,
-      vessel:       sim.vessel,
-      originCode:   (sim.originCoords?.[0]||0).toFixed(0)+'°',
-      originCity:   q.origin_city    || '—',
-      originCountry:q.origin_country || '—',
-      destCode:     (sim.destCoords?.[0]||0).toFixed(0)+'°',
-      destCity:     q.destination_city    || '—',
-      destCountry:  q.destination_country || '—',
-      pct,
-      transitDays:  sim.transitDays,
-      eta:          etaStr,
-      daysLeft:     dLeft > 0 ? dLeft + ' days remaining' : 'Delivered',
-      currentLocation: curLoc,
-      submittedAt:  new Date(q.submittedAt).toLocaleDateString('en-US',{day:'numeric',month:'short',year:'numeric'}),
+      id: quote.ref, statusClass: 'delivered', statusLabel: 'In Storage',
+      vehicleEmoji: '🏭', service: 'Warehousing', vessel: quote.vessel,
+      originCode: (quote.origin_city||'WHS').slice(0,3).toUpperCase(), originCity: quote.origin_city || '—', originCountry: quote.origin_country || '—',
+      destCode: (quote.destination_city||'WHS').slice(0,3).toUpperCase(), destCity: quote.destination_city || '—', destCountry: quote.destination_country || '—',
+      pct: 100, transitDays: 0, eta: 'Ongoing storage', daysLeft: 'In warehouse',
+      currentLocation: originLabel, paused: false, isDemo: false,
       detailCards: [
-        {
-          icon: '👤', title: 'Shipper & Contact',
-          rows: [
-            ['Name',    (q.first_name||'') + ' ' + (q.last_name||'')],
-            ['Company', q.company || '—'],
-            ['Email',   q.email   || '—'],
-            ['Phone',   q.phone   || '—'],
-            ['Country', q.country || '—'],
-          ]
-        },
-        {
-          icon: '📦', title: 'Cargo',
-          rows: [
-            ['Description', q.cargo_description || '—'],
-            ['Weight',      q.cargo_weight ? q.cargo_weight + ' kg' : '—'],
-            ['Volume',      q.cargo_volume ? q.cargo_volume + ' CBM' : '—'],
-            ['Packages',    q.cargo_packages || '—'],
-            ['Packaging',   q.packaging_type || '—'],
-            ...(special.length ? [['Special', special.join(', ')]] : []),
-          ]
-        },
-        {
-          icon: '🗺️', title: 'Route & Logistics',
-          rows: [
-            ['Service',     svcLabel],
-            ['Origin',      (q.origin_city||'—') + ', ' + (q.origin_country||'—')],
-            ['Destination', (q.destination_city||'—') + ', ' + (q.destination_country||'—')],
-            ['Incoterms',   q.incoterms || 'Flexible'],
-            ['Ready Date',  q.ready_date ? new Date(q.ready_date).toLocaleDateString('en-US',{day:'numeric',month:'short',year:'numeric'}) : '—'],
-            ['Est. Delivery', etaStr],
-            ...(addons.length ? [['Add-ons', addons.join(', ')]] : []),
-          ]
-        },
-        {
-          icon: vehicleEmoji, title: 'Transport & Status',
-          rows: [
-            ['Vessel / Unit', sim.vessel],
-            ['Transit Time',  sim.transitDays + ' days'],
-            ['Progress',      pct + '% complete'],
-            ['Current Location', curLoc],
-            ['Submitted',     new Date(q.submittedAt).toLocaleDateString('en-US',{day:'numeric',month:'short',year:'numeric'})],
-            ...(q.special_instructions ? [['Notes', q.special_instructions]] : []),
-          ]
-        },
+        { icon: '👤', title: 'Shipper & Contact', rows: [
+            ['Name', `${quote.first_name||''} ${quote.last_name||''}`], ['Company', quote.company||'—'], ['Email', quote.email||'—'],
+        ]},
+        { icon: '📦', title: 'Cargo in Storage', rows: [
+            ['Description', quote.cargo_description||'—'], ['Weight', quote.cargo_weight ? quote.cargo_weight+' kg':'—'],
+            ['Packages', quote.cargo_packages||'—'], ['Facility', originLabel],
+        ]},
       ],
-      events: sim.events.map(e => ({
-        status: e.status,
-        icon:   e.status === 'done' ? '✓' : e.status === 'active' ? '▸' : '○',
-        date:   e.dateStr || new Date(e.date).toLocaleDateString('en-US',{day:'numeric',month:'short',year:'numeric'}),
-        event:  e.event,
-        location: e.location,
-      })),
-      isQuote: true,
-      quoteRef: q.ref,
+      events: [{ status:'done', icon:'✓', date:new Date(quote.submittedAt).toLocaleDateString('en-US',{day:'numeric',month:'short',year:'numeric'}), event:'Cargo Received at Warehouse', location:originLabel },
+               { status:'active', icon:'▸', date:'Ongoing', event:'In Storage — Available for Fulfillment', location:originLabel }],
     });
+    setTimeout(() => initMap(quote.originCoords, quote.originCoords, [quote.originCoords, quote.originCoords], quote.originCoords, 0, '🏭'), 80);
+  }
 
-    setTimeout(() => initMap(
-      sim.originCoords, sim.destCoords,
-      sim.waypoints,
-      sim.currentPosition,
-      sim.progress,
-      vehicleEmoji
-    ), 80);
+  /* ============================================================
+     REAL-TIME POLLING for quote shipments
+  ============================================================ */
+  function startQuotePolling(ref) {
+    if (trackPollTimer) clearInterval(trackPollTimer);
+    trackPollTimer = setInterval(() => tickQuote(ref), 1000);
+  }
+
+  function tickQuote(ref) {
+    const quote = window.QuoteTrackingBridge.loadQuote(ref);
+    if (!quote) { clearInterval(trackPollTimer); trackPollTimer = null; return; }
+    const progress = window.QuoteTrackingBridge.computeProgress(quote);
+    const pct = Math.round(progress * 100);
+    const paused = quote.playback.status === 'paused' && pct < 100;
+    const pos = window.QuoteTrackingBridge.getPositionAtProgress(quote.waypoints, progress);
+
+    // Route bar
+    const doneEl = document.querySelector('.route-done');
+    const iconEl = document.querySelector('.route-icon');
+    const pctEl  = document.querySelector('.route-pct');
+    const clamped = Math.max(4, Math.min(96, pct));
+    if (doneEl) doneEl.style.width = pct + '%';
+    if (iconEl) iconEl.style.left = clamped + '%';
+    if (pctEl)  { pctEl.style.left = clamped + '%'; pctEl.textContent = pct + '%'; }
+
+    // Status pill
+    const pill = document.querySelector('.status-pill');
+    if (pill) {
+      pill.className = 'status-pill ' + (pct >= 100 ? 'delivered' : (paused ? 'paused' : 'in-transit'));
+      pill.innerHTML = '<div class="dot"></div>' + (pct >= 100 ? 'Delivered' : (paused ? 'Paused by Shipper' : 'In Transit'));
+    }
+
+    // Live badge + ship marker style
+    const liveBadge = document.querySelector('.map-live-badge');
+    if (liveBadge) {
+      liveBadge.classList.toggle('paused', paused);
+      liveBadge.innerHTML = `<div class="live-dot"></div>${paused ? 'PAUSED' : (pct>=100 ? 'DELIVERED' : 'LIVE POSITION')}`;
+    }
+    if (shipMark) {
+      const el = shipMark.getElement();
+      if (el) { const div = el.querySelector('.lm-ship'); if (div) div.classList.toggle('paused', paused); }
+      shipMark.setLatLng(pos);
+    }
+
+    // Pos badge (reverse-geocoded, throttled)
+    const now = Date.now();
+    if (now - liveLocLastFetchAt > 15000 || !liveLocLabel) {
+      liveLocLastFetchAt = now;
+      window.QuoteTrackingBridge.reverseGeocode(pos[0], pos[1]).then((label) => {
+        if (label) {
+          liveLocLabel = label;
+          const badge = document.getElementById('pos-badge');
+          if (badge) badge.textContent = pct >= 100 ? `📍 ${quote.destination_city}, ${quote.destination_country}` : `📍 ${label}`;
+        }
+      });
+    }
+
+    // Rebuild timeline + eta box every tick (cheap, keeps active step accurate)
+    const tlBody = document.querySelector('.tl-body');
+    if (tlBody) {
+      const events = window.QuoteTrackingBridge.buildEvents(quote, progress, pct > 0 && pct < 100 ? liveLocLabel : null);
+      tlBody.innerHTML = events.map(ev => `
+        <div class="tl-step">
+          <div class="tl-dot ${ev.status}">${ev.status==='done'?'✓':ev.status==='active'?'▸':'○'}</div>
+          <div class="tl-info">
+            <div class="tl-date">${ev.date}</div>
+            <div class="tl-event ${ev.status==='active'?'active-ev':''}">${ev.event}</div>
+            <div class="tl-loc">📍 ${ev.location}</div>
+          </div>
+        </div>`).join('');
+    }
+
+    if (pct >= 100) { clearInterval(trackPollTimer); trackPollTimer = null; }
   }
 
   /* ============================================================
@@ -552,7 +613,6 @@
     const pct = o.pct || 0;
 
     return `
-      <!-- Top header row -->
       <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:var(--space-4);margin-bottom:var(--space-6);">
         <div>
           <div style="font-size:.65rem;color:var(--color-gray);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;">Tracking Reference</div>
@@ -564,7 +624,6 @@
         </div>
       </div>
 
-      <!-- Route progress bar -->
       <div class="route-bar">
         <div class="rc">
           <div class="rc-code">${o.originCode}</div>
@@ -586,10 +645,9 @@
         </div>
       </div>
 
-      <!-- Live Map -->
       <div class="map-wrapper">
         <div id="live-map"></div>
-        <div class="map-live-badge"><div class="live-dot"></div>LIVE POSITION</div>
+        <div class="map-live-badge ${o.paused ? 'paused' : ''}"><div class="live-dot"></div>${o.paused ? 'PAUSED' : (pct>=100?'DELIVERED':'LIVE POSITION')}</div>
         <div class="map-pos-badge" id="pos-badge">📍 ${o.currentLocation}</div>
         <div class="map-eta-badge">
           <small>Est. Arrival</small>
@@ -598,7 +656,6 @@
         </div>
       </div>
 
-      <!-- Detail cards -->
       <div class="detail-grid">
         ${o.detailCards.map(card => `
           <div class="dcard">
@@ -613,7 +670,6 @@
         `).join('')}
       </div>
 
-      <!-- Timeline -->
       <div class="tl-wrap">
         <div class="tl-head">
           <span style="font-size:1rem;">🕐</span>
@@ -633,7 +689,6 @@
         </div>
       </div>
 
-      <!-- Action buttons -->
       <div style="display:flex;gap:var(--space-3);margin-top:var(--space-6);flex-wrap:wrap;">
         <a href="quote-request.html" class="btn btn--primary">+ New Quote</a>
         <button onclick="window.print()" class="btn btn--outline">🖨 Print</button>
@@ -664,19 +719,13 @@
   }
 
   /* ============================================================
-     LEAFLET MAP
+     LEAFLET MAP — shared setup
   ============================================================ */
-  function initMap(orig, dest, waypoints, currentPos, progress, emoji) {
+  function baseMapSetup(orig, dest, waypoints, currentPos, progress) {
     const el = document.getElementById('live-map');
-    if (!el || !window.L) return;
+    if (!el || !window.L) return null;
 
     if (leafMap) { leafMap.remove(); leafMap = null; }
-    if (animId)  { cancelAnimationFrame(animId); animId = null; }
-
-    orig       = orig       || [20, 80];
-    dest       = dest       || [20, 20];
-    currentPos = currentPos || orig;
-    waypoints  = (waypoints && waypoints.length >= 2) ? waypoints : [orig, dest];
 
     leafMap = L.map('live-map', { zoomControl:true, scrollWheelZoom:false, attributionControl:true });
 
@@ -685,52 +734,66 @@
       maxZoom: 18,
     }).addTo(leafMap);
 
-    /* Fit bounds */
     const bounds = L.latLngBounds([orig, dest]);
     waypoints.forEach(p => bounds.extend(p));
     bounds.extend(currentPos);
     leafMap.fitBounds(bounds, { padding: [64, 64] });
 
-    /* Full route — dashed grey */
     L.polyline(waypoints, { color:'#4A9FD4', weight:2, opacity:0.45, dashArray:'8 6' }).addTo(leafMap);
-
-    /* Completed portion — orange */
     if (progress > 0) {
-      const donePath = getPathUpTo(waypoints, progress);
+      const donePath = window.QuoteTrackingBridge.getPathUpTo(waypoints, progress);
       L.polyline(donePath, { color:'#E8931A', weight:3.5, opacity:0.9 }).addTo(leafMap);
     }
 
-    /* Origin marker */
     L.marker(orig, { icon: L.divIcon({ html:`<div class="lm-origin">🏭</div>`, className:'', iconSize:[38,38], iconAnchor:[19,19] }) })
      .addTo(leafMap).bindPopup('<strong>Origin</strong>');
-
-    /* Destination marker */
     L.marker(dest, { icon: L.divIcon({ html:`<div class="lm-dest">🏁</div>`, className:'', iconSize:[38,38], iconAnchor:[19,19] }) })
      .addTo(leafMap).bindPopup('<strong>Destination</strong>');
 
-    /* Ship/vehicle marker */
+    return leafMap;
+  }
+
+  function initMap(orig, dest, waypoints, currentPos, progress, emoji) {
+    if (animId) { cancelAnimationFrame(animId); animId = null; }
+    orig = orig || [20, 80]; dest = dest || [20, 20];
+    currentPos = currentPos || orig;
+    waypoints = (waypoints && waypoints.length >= 2) ? waypoints : [orig, dest];
+
+    const map = baseMapSetup(orig, dest, waypoints, currentPos, progress);
+    if (!map) return;
+
     shipMark = L.marker(currentPos, {
       icon: L.divIcon({ html:`<div class="lm-ship">${emoji}</div>`, className:'', iconSize:[46,46], iconAnchor:[23,23] }),
       zIndexOffset: 1000,
-    }).addTo(leafMap);
+    }).addTo(map);
     shipMark.bindPopup(`<strong>Current Position</strong><br>Lat ${currentPos[0].toFixed(2)}° Lng ${currentPos[1].toFixed(2)}°`).openPopup();
-
-    /* Start animation */
-    animProg = progress;
-    animWay  = waypoints;
-    lastTick = null;
-    startAnim();
   }
 
-  function startAnim() {
-    const SPEED = 0.0003; // fraction/sec — slow drift
+  function initQuoteMap(orig, dest, waypoints, currentPos, progress, emoji, paused) {
+    orig = orig || [20, 80]; dest = dest || [20, 20];
+    currentPos = currentPos || orig;
+    waypoints = (waypoints && waypoints.length >= 2) ? waypoints : [orig, dest];
+
+    const map = baseMapSetup(orig, dest, waypoints, currentPos, progress);
+    if (!map) return;
+
+    shipMark = L.marker(currentPos, {
+      icon: L.divIcon({ html:`<div class="lm-ship${paused?' paused':''}">${emoji}</div>`, className:'', iconSize:[46,46], iconAnchor:[23,23] }),
+      zIndexOffset: 1000,
+    }).addTo(map);
+    shipMark.bindPopup(`<strong>Current Position</strong><br>Lat ${currentPos[0].toFixed(2)}° Lng ${currentPos[1].toFixed(2)}°`);
+  }
+
+  /* ---- Demo drift animation (visual only, endless slow forward motion) ---- */
+  function startDemoAnim() {
+    const SPEED = 0.0003;
     function tick(now) {
       if (!shipMark || !leafMap) return;
       if (!lastTick) lastTick = now;
       const dt = (now - lastTick) / 1000;
       lastTick = now;
       animProg = Math.min(1, animProg + SPEED * dt);
-      const pos = getPathUpTo(animWay, animProg).at(-1);
+      const pos = window.QuoteTrackingBridge.getPathUpTo(animWay, animProg).at(-1);
       if (pos) {
         shipMark.setLatLng(pos);
         const posBadge = document.getElementById('pos-badge');
@@ -739,19 +802,6 @@
       if (animProg < 1) animId = requestAnimationFrame(tick);
     }
     animId = requestAnimationFrame(tick);
-  }
-
-  function getPathUpTo(waypoints, progress) {
-    const n    = waypoints.length - 1;
-    const raw  = progress * n;
-    const seg  = Math.min(Math.floor(raw), n - 1);
-    const frac = raw - seg;
-    const path = waypoints.slice(0, seg + 1);
-    if (frac > 0 && seg < n) {
-      const a = waypoints[seg], b = waypoints[seg + 1];
-      path.push([a[0] + (b[0]-a[0])*frac, a[1] + (b[1]-a[1])*frac]);
-    }
-    return path;
   }
 
   /* ---- Utilities ---- */
