@@ -8,10 +8,11 @@
      against the estimated transit duration — not a fake looping
      animation. Reloading the page or checking a week later still
      shows the correct position.
-   - Playback (play/pause) is stored with the shipment record in
-     localStorage, so pausing on the "Get a Quote" page is
-     reflected on the Tracking page (and vice-versa) for anyone
-     checking that reference in the same browser.
+   - Playback (play/pause/cancel) is stored with the shipment
+     record in localStorage, so pausing or cancelling on the
+     "Get a Quote" admin panel is reflected on the Tracking page
+     (and vice-versa) for anyone checking that reference in the
+     same browser.
    NOTE: this is a front-end-only demo. Data lives in this
    browser's localStorage — it will not sync across different
    devices/browsers, since there is no backend/database.
@@ -290,6 +291,13 @@
     return readJSON(refKey(ref), null);
   }
 
+  /* Playback control.
+     Actions: 'pause', 'play', 'cancel'.
+     - 'pause'  freezes progress where it currently stands (resumable via 'play').
+     - 'play'   resumes a paused shipment from where it stopped.
+     - 'cancel' freezes progress permanently (terminal state; shows as "Cancelled"
+                everywhere the shipment is viewed). A cancelled shipment can only
+                come from 'playing' or 'paused' — cancelling twice is a no-op. */
   function setPlayback(ref, action) {
     const q = loadQuote(ref);
     if (!q) return null;
@@ -301,6 +309,12 @@
     } else if (action === 'play' && q.playback.status === 'paused') {
       q.playback.segmentStart = t;
       q.playback.status = 'playing';
+    } else if (action === 'cancel' && (q.playback.status === 'playing' || q.playback.status === 'paused')) {
+      if (q.playback.status === 'playing') {
+        q.playback.accumulatedMs += t - q.playback.segmentStart;
+      }
+      q.playback.segmentStart = t;
+      q.playback.status = 'cancelled';
     }
     writeJSON(refKey(ref), q);
     return q;
